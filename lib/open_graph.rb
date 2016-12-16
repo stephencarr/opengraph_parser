@@ -13,15 +13,11 @@ class OpenGraph
     end
     @src = src
     @body = nil
-    @images = []
+    @images_tpl = {}
+    @images = @images_tpl.dup
     @metadata = {}
-    parse_opengraph(options)
-    load_fallback if fallback
-    check_images_path
-  end
+    @doc = nil
 
-  private
-  def parse_opengraph(options = {})
     begin
       if @src.include? '</html>'
         @body = @src
@@ -34,71 +30,76 @@ class OpenGraph
     end
 
     if @body
-      attrs_list = %w(title url type description)
-      doc = Nokogiri.parse(@body)
-      doc.css('meta').each do |m|
-        if m.attribute('property') && m.attribute('property').to_s.match(/^og:(.+)$/i)
-          m_content = m.attribute('content').to_s.strip
-          metadata_name = m.attribute('property').to_s.gsub("og:", "")
-          @metadata = add_metadata(@metadata, metadata_name, m_content)
-          case metadata_name
-            when *attrs_list
-              self.instance_variable_set("@#{metadata_name}", m_content) unless m_content.empty?
-            when "image"
-              add_image(m_content)
-          end
+      @doc = Nokogiri.parse(@body)
+      parse_opengraph(options)
+      load_fallback if fallback
+      check_images_path
+    end
+  end
+
+  private
+  def parse_opengraph(options = {})
+    attrs_list = %w(title url type description)
+    @doc.css('meta').each do |m|
+      if m.attribute('property') && m.attribute('property').to_s.match(/^og:(.+)$/i)
+        m_content = m.attribute('content').to_s.strip
+        metadata_name = m.attribute('property').to_s.gsub("og:", "")
+        @metadata = add_metadata(@metadata, metadata_name, m_content)
+        case metadata_name
+          when *attrs_list
+            self.instance_variable_set("@#{metadata_name}", m_content) unless m_content.empty?
+          when "image"
+            add_image(m_content, "og")
         end
       end
     end
   end
 
   def load_fallback
-    if @body
-      doc = Nokogiri.parse(@body)
-
-      if @title.to_s.empty? && doc.xpath("//head//title").size > 0
-        @title = doc.xpath("//head//title").first.text.to_s.strip
-      end
-
-      @url = @src if @url.to_s.empty?
-
-      if @description.to_s.empty? && description_meta = doc.xpath("//head//meta[@name='description']").first
-        @description = description_meta.attribute("content").to_s.strip
-      end
-
-      if @description.to_s.empty?
-        @description = fetch_first_text(doc)
-      end
-      fetch_images(doc, "//head//link[@type='image/png']", "href") if @images.empty?
-      fetch_images(doc, "//head//link[@type='image/x-icon']", "href") if @images.empty?
-      fetch_images(doc, "//head//link[@type='image/gif']", "href") if @images.empty?
-      fetch_images(doc, "//head//link[@rel='image_src']", "href") if @images.empty?
-      fetch_images(doc, "//img", "src") if @images.empty?
+    if @title.to_s.empty? && @doc.xpath("//head//title").size > 0
+      @title = @doc.xpath("//head//title").first.text.to_s.strip
     end
+
+    @url = @src if @url.to_s.empty?
+
+    if @description.to_s.empty? && description_meta = @doc.xpath("//head//meta[@name='description']").first
+      @description = description_meta.attribute("content").to_s.strip
+    end
+
+    if @description.to_s.empty?
+      @description = fetch_first_text(@doc)
+    end
+    fetch_images(@doc, "//head//link[@type='image/png']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//head//link[@type='image/gif']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//head//link[@type='image/x-icon']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//head//link[@rel='image_src']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//head//link[@rel='shortcut icon']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//head//link[@rel='icon']", "href", "fav") if images["fav"].nil?
+    fetch_images(@doc, "//img", "src", "alt")
   end
 
   def check_images_path
     @original_images = @images.dup
     uri = Addressable::URI.parse(@src)
     imgs = @images.dup
-    @images = []
-    imgs.each do |img|
-      if Addressable::URI.parse(img).host.nil?
-        full_path = uri.join(img).to_s
-        add_image(full_path)
+    @images = @images_tpl.dup
+    imgs.each do | key, value |
+      if Addressable::URI.parse(value).host.nil?
+        full_path = uri.join(value).to_s
+        add_image(full_path, key)
       else
-        add_image(img)
+        add_image(value, key)
       end
     end
   end
 
-  def add_image(image_url)
-    @images << image_url unless @images.include?(image_url) || image_url.to_s.empty?
+  def add_image(image_url, type)
+    @images[type] = image_url unless image_url.to_s.empty?
   end
 
-  def fetch_images(doc, xpath_str, attr)
+  def fetch_images(doc, xpath_str, attr, type)
     doc.xpath(xpath_str).each do |link|
-      add_image(link.attribute(attr).to_s.strip)
+      add_image(link.attribute(attr).to_s.strip, type)
     end
   end
 
