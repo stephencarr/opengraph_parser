@@ -69,7 +69,9 @@ class OpenGraph
       if @description.to_s.empty?
         @description = fetch_first_text(doc)
       end
-
+      fetch_images(doc, "//head//link[@type='image/png']", "href") if @images.empty?
+      fetch_images(doc, "//head//link[@type='image/x-icon']", "href") if @images.empty?
+      fetch_images(doc, "//head//link[@type='image/gif']", "href") if @images.empty?
       fetch_images(doc, "//head//link[@rel='image_src']", "href") if @images.empty?
       fetch_images(doc, "//img", "src") if @images.empty?
     end
