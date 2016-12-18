@@ -75,7 +75,6 @@ class OpenGraph
     fetch_images(@doc, "//head//link[@rel='image_src']", "href", "fav") if images["fav"].nil?
     fetch_images(@doc, "//head//link[@rel='shortcut icon']", "href", "fav") if images["fav"].nil?
     fetch_images(@doc, "//head//link[@rel='icon']", "href", "fav") if images["fav"].nil?
-    fetch_images(@doc, "//img", "src", "alt")
   end
 
   def check_images_path
@@ -88,6 +87,7 @@ class OpenGraph
         full_path = uri.join(value).to_s
         add_image(full_path, key)
       else
+        value.prepend("#{uri.scheme.to_s}:") if Addressable::URI.parse(value).scheme.nil?
         add_image(value, key)
       end
     end
